@@ -28,22 +28,22 @@ uint8_t broadcastAddress[] = {0x78, 0xE3, 0x6D, 0x18, 0xCC, 0x78};
 esp_now_peer_info_t peerInfo;
 
 // Structure to send data. Must match the receiver's structure
-typedef struct struct_message {
+typedef struct struct_message1 {
   bool speed_required = 0; // Flag to be enabled when we need to receive speed data
   bool fcam_status = 0; // Flag that will be HIGH when the front camera is currently active
-} struct_message;
+} struct_message1;
 
 // Create a struct_message called mySendingData
-struct_message mySendingData;
+struct_message1 mySendingData;
 
 // Structure to receive data. Must match the receiver's structure
-typedef struct struct_message {
+typedef struct struct_message2 {
   uint8_t car_speed = 0; // This variable will allow us to know whether the car is stopped or moving too fast, used in the camera logic.
   bool fcam_kill_switch = 0; // This flag will allow killing the front camera view if steering wheel button is pressed. Enabled from the external uC
-} struct_message;
+} struct_message2;
 
 // Create a struct message called myReceivingData
-struct_message myReceivingData;
+struct_message2 myReceivingData;
 
 // Standard variables
 volatile int SM_state = 1; // This'll record the current state in the state machine. Our initial state is state 1. //? Need to declare this as volatile?
