@@ -19,6 +19,7 @@
   #define DEBUG_SERIALBEGIN(X) // As nothing
 #endif
 
+/* Variable definitions */
 
 // Receiver MAC Address. //TODO In the real project, replace with the actual receiver MAC address
 uint8_t broadcastAddress[] = {0x78, 0xE3, 0x6D, 0x18, 0xCC, 0x78};
@@ -35,9 +36,16 @@ typedef struct struct_message {
 // Create a struct_message called mySendingData
 struct_message mySendingData;
 
+// Structure to receive data. Must match the receiver's structure
+typedef struct struct_message {
+  uint8_t car_speed = 0; // This variable will allow us to know whether the car is stopped or moving too fast, used in the camera logic.
+  bool fcam_kill_switch = 0; // This flag will allow killing the front camera view if steering wheel button is pressed. Enabled from the external uC
+} struct_message;
 
-// Variable definitions
-uint8_t car_speed = 0; // This variable will allow us to know whether the car is stopped or moving too fast, used in the camera logic.
+// Create a struct message called myReceivingData
+struct_message myReceivingData;
+
+// Standard variables
 volatile int SM_state = 1; // This'll record the current state in the state machine. Our initial state is state 1. //? Need to declare this as volatile?
 volatile bool reverseEngaged = 0; // Flag to toggle in the ISR, depending on the reverse gear status. //? Need to declare this as volatile?
 unsigned long time_car_stopped = 0; // Varible to record when the car stops after disengaging reverse gear
@@ -45,19 +53,21 @@ unsigned long time_fcam_enabled = 0; // Records when the front camera was enable
 unsigned long wait_after_stopped = 2000; // Controls how much time to keep back camera signal after reverse disengaged and car stop.
 unsigned long wait_after_fcam_enabled = 6000; // Time after which the front camera and trigger signal need to be switched off
 
-
 // Pin definitions
 #define videoSW_CTRL 4 
 #define optocoupler_CTRL 15
 #define reverseSignalpin 16
 
 // Function declarations
+
+// Callback function that will be executed when data is received.
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len); 
-void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) ;
-void IRAM_ATTR reverseSignal(); // Interrupt Service Routine that will trigger everytime the reverse gear is engaged or disengaged.
-void send_information(); // Function to request or unrequest speed and inform front cam status to the external uC via ESP-NOW commmunication
-
-
+// Callback function that will be executed when data is sent.
+void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) ; 
+// Interrupt Service Routine that will trigger everytime the reverse gear is engaged or disengaged.
+void IRAM_ATTR reverseSignal(); 
+// Function to request or unrequest speed and inform front cam status to the external uC via ESP-NOW commmunication.
+void send_information(); 
 
 
 void setup() {
@@ -116,6 +126,7 @@ void setup() {
     DEBUGPRINTLN("Reverse gear preselected");
   } 
 }
+
 
 void loop() {
 
@@ -196,7 +207,7 @@ void loop() {
 
     case 4:{ // WAIT FOR CAR STOP
  
-      if(car_speed == 0){
+      if(myReceivingData.car_speed == 0){
         DEBUGPRINTLN("Car supposedly stopped after reverse disengaged");
 
         // Record time when car is stopped
@@ -241,14 +252,15 @@ void loop() {
       DEBUGPRINTLN("Wait for time or speed conditions to kill trigger signal");
     } break;
 
-    case 7:{ // WAIT FOR TIME OR SPEED CONDITIONS
+    case 7:{ // WAIT FOR TIME, SPEED OR OTHER CONDITIONS
 
-      if (millis()-time_fcam_enabled >= wait_after_fcam_enabled || car_speed >= 6){
+      if (millis()-time_fcam_enabled >= wait_after_fcam_enabled || myReceivingData.car_speed >= 6 || myReceivingData.fcam_kill_switch){
         SM_state=0;
       }
     } break;  
   }  
 }
+
 
 void IRAM_ATTR reverseSignal(){
 
@@ -265,6 +277,7 @@ void IRAM_ATTR reverseSignal(){
   }  
 }
 
+
 void send_information(){
 
   esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &mySendingData, sizeof(mySendingData));
@@ -273,18 +286,19 @@ void send_information(){
   else  DEBUGPRINTLN("Error sending the data");
 }
 
-// Callback function that will be executed when data is received
+
+
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
 
-  memcpy(&car_speed, incomingData, sizeof(car_speed));
+  memcpy(&myReceivingData, incomingData, sizeof(myReceivingData));
   //DEBUGPRINT("Bytes received: ");
   //DEBUGPRINTLN(len);
   DEBUGPRINTLN("");
   DEBUGPRINT("Vehicle speed: ");
-  DEBUGPRINTLN(car_speed);
+  DEBUGPRINTLN(myReceivingData.car_speed);
 }
 
-// Callback function that will executed when data is sent
+
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 
   //DEBUGPRINT("\r\nLast Packet Send Status:\t");
