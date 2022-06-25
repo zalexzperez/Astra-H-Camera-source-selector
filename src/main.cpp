@@ -20,15 +20,30 @@
 #endif
 
 
+// Receiver MAC Address. //TODO In the real project, replace with the actual receiver MAC address
+uint8_t broadcastAddress[] = {0x78, 0xE3, 0x6D, 0x18, 0xCC, 0x78};
+
+// Create a variable of type esp_now_peer_info_t to store information about the receiving peer.
+esp_now_peer_info_t peerInfo;
+
+// Structure to send data. Must match the receiver's structure
+typedef struct struct_message {
+  bool speed_required = 0; // Flag to be enabled when we need to receive speed data
+  bool fcam_status = 0; // Flag that will be HIGH when the front camera is currently active
+} struct_message;
+
+// Create a struct_message called mySendingData
+struct_message mySendingData;
+
+
 // Variable definitions
-bool speed_required = 0; // Flag to be enabled when we need to receive speed data
 uint8_t car_speed = 0; // This variable will allow us to know whether the car is stopped or moving too fast, used in the camera logic.
 volatile int SM_state = 1; // This'll record the current state in the state machine. Our initial state is state 1. //? Need to declare this as volatile?
 volatile bool reverseEngaged = 0; // Flag to toggle in the ISR, depending on the reverse gear status. //? Need to declare this as volatile?
 unsigned long time_car_stopped = 0; // Varible to record when the car stops after disengaging reverse gear
 unsigned long time_fcam_enabled = 0; // Records when the front camera was enabled
 unsigned long wait_after_stopped = 2000; // Controls how much time to keep back camera signal after reverse disengaged and car stop.
-unsigned long wait_after_fcam_enabled = 6000; // 
+unsigned long wait_after_fcam_enabled = 6000; // Time after which the front camera and trigger signal need to be switched off
 
 
 // Pin definitions
@@ -37,17 +52,10 @@ unsigned long wait_after_fcam_enabled = 6000; //
 #define reverseSignalpin 16
 
 // Function declarations
-void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len); //? Is this necessary?
+void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len); 
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) ;
 void IRAM_ATTR reverseSignal(); // Interrupt Service Routine that will trigger everytime the reverse gear is engaged or disengaged.
-void speed_request(); // Function to request or unrequest speed to the external uC via ESP-NOW commmunication
-
-
-// Receiver MAC Address. //TODO In the real project, replace with the actual receiver MAC address
-uint8_t broadcastAddress[] = {0x78, 0xE3, 0x6D, 0x18, 0xCC, 0x78};
-
-// Create a variable of type esp_now_peer_info_t to store information about the receiving peer.
-esp_now_peer_info_t peerInfo;
+void send_information(); // Function to request or unrequest speed and inform front cam status to the external uC via ESP-NOW commmunication
 
 
 
@@ -122,9 +130,14 @@ void loop() {
       // Reselect front camera video source
       digitalWrite(videoSW_CTRL, LOW);
 
-      // Unrequest speed to external uC
-      speed_required = 0;
-      speed_request();
+      // Update front camera inactive status
+      mySendingData.fcam_status = 0;
+
+      // Speed no longer required
+      mySendingData.speed_required = 0;
+
+      // Send new information to external uC
+      send_information();
 
       // Turn off built-in LED to visually inform of trigger signal status
       #ifdef DEBUG
@@ -155,8 +168,8 @@ void loop() {
       digitalWrite(optocoupler_CTRL, HIGH);
 
       // Request speed to external uC
-      speed_required = 1;
-      speed_request();
+      mySendingData.speed_required = 1;
+      send_information();
       
       #ifdef DEBUG
         // Turn on built-in LED to visually inform of trigger signal status
@@ -212,7 +225,13 @@ void loop() {
       // Select the front camera video source
       digitalWrite(videoSW_CTRL, LOW);
 
-      // Record time when front camera is enabled
+      // Inform external uC of front camera active status
+      mySendingData.fcam_status = 1;
+
+      // Send new information to external uC
+      send_information();
+
+      // Record time when front camera active status
       time_fcam_enabled = millis();
 
       // Move to the next state
@@ -246,9 +265,9 @@ void IRAM_ATTR reverseSignal(){
   }  
 }
 
-void speed_request(){
+void send_information(){
 
-  esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &speed_required, sizeof(speed_required));
+  esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &mySendingData, sizeof(mySendingData));
   if (result == ESP_OK) {//DEBUGPRINTLN("Sent with success");
   }
   else  DEBUGPRINTLN("Error sending the data");
