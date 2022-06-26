@@ -46,8 +46,8 @@ typedef struct struct_message2 {
 struct_message2 myReceivingData;
 
 // Standard variables
-volatile int SM_state = 1; // This'll record the current state in the state machine. Our initial state is state 1. //? Need to declare this as volatile?
-volatile bool reverseEngaged = 0; // Flag to toggle in the ISR, depending on the reverse gear status. //? Need to declare this as volatile?
+volatile int SM_state = 1; // This'll record the current state in the state machine. Our initial state is state 1. 
+volatile bool reverseEngaged = 0; // Flag to toggle in the ISR, depending on the reverse gear status. 
 unsigned long time_car_stopped = 0; // Varible to record when the car stops after disengaging reverse gear
 unsigned long time_fcam_enabled = 0; // Records when the front camera was enabled
 unsigned long wait_after_stopped = 2000; // Controls how much time to keep back camera signal after reverse disengaged and car stop.
@@ -255,7 +255,14 @@ void loop() {
     case 7:{ // WAIT FOR TIME, SPEED OR OTHER CONDITIONS
 
       if (millis()-time_fcam_enabled >= wait_after_fcam_enabled || myReceivingData.car_speed >= 6 || myReceivingData.fcam_kill_switch){
+        
         SM_state=0;
+        
+        #ifdef DEBUG
+          if(millis()-time_fcam_enabled >= wait_after_fcam_enabled) DEBUGPRINTLN("Time condition killed trigger signal");
+          else if(myReceivingData.car_speed >= 6) DEBUGPRINTLN("Speed condition killed trigger signal");
+          else DEBUGPRINTLN("Pushbutton press killed trigger signal");
+        #endif
       }
     } break;  
   }  
@@ -293,9 +300,15 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   memcpy(&myReceivingData, incomingData, sizeof(myReceivingData));
   //DEBUGPRINT("Bytes received: ");
   //DEBUGPRINTLN(len);
-  DEBUGPRINTLN("");
-  DEBUGPRINT("Vehicle speed: ");
-  DEBUGPRINTLN(myReceivingData.car_speed);
+
+  // Only make sure we're printing speed messages if speed is required.
+  if (mySendingData.speed_required){
+    DEBUGPRINTLN("");
+    DEBUGPRINT("Vehicle speed: ");
+    DEBUGPRINT(myReceivingData.car_speed);
+    DEBUGPRINTLN(" km/h");
+  }
+
 }
 
 
